@@ -1,0 +1,66 @@
+\clearpage\section{实验1：把当前输入变成当前结果}
+\subsection{先按电路的输入输出读它}
+实验1的顶层是\code{mux}，文件是\code{lab1/mux.v}。它有两组四位数据输入\code{input_a}、\code{input_b}，一个使能\code{en}，一个选择输入\code{mux_sel}，以及四位输出\code{output_c}。
+\begin{center}
+\begin{tikzpicture}
+\node[block,minimum width=47mm,minimum height=23mm] (m) {加减运算与结果选择\\\code{mux}};
+\node[left=13mm of m,align=right,font=\small] (i) {a：四位数字\\b：四位数字};
+\node[above=8mm of m,font=\small] (s) {en、mux\_sel};
+\node[right=12mm of m,align=left,font=\small] (o) {四位输出\\四个LED};
+\draw[flow](i)--(m);\draw[flow](s)--(m);\draw[flow](m)--(o);
+\end{tikzpicture}
+\end{center}
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}lllX@{}}\toprule
+en & mux\_sel & 输出 & 含义\\\midrule
+0 & 任意 & \code{1111} & 未启用时输出规定常量\\
+1 & 0 & a+b的低4位 & 选择加法结果\\
+1 & 1 & a-b的低4位 & 选择减法结果\\\bottomrule
+\end{tabularx}
+\end{center}
+这里“使能无效”的输出由题目与代码定义，恰好是四个1；使能这个名称本身并不规定禁用时必须输出0。
+
+\subsection{逐句理解核心代码}
+\begin{lstlisting}
+always @(*) begin
+    if (en == 1'b0) begin
+        output_c = 4'b1111;
+    end else if (mux_sel == 1'b0) begin
+        output_c = input_a + input_b;
+    end else begin
+        output_c = input_a - input_b;
+    end
+end
+\end{lstlisting}
+第一行说明它根据输入变化重新计算。第一层\code{if}优先检查使能，禁用时不再看选择信号；启用后才决定采用加法还是减法。三条分支都对\code{output_c}赋值，所以这个块不需要记忆上次输出。
+
+从硬件看，加减与选择逻辑共同实现这一关系。Vivado可以优化具体实现，不能仅凭源码里写了加号和减号，就断言最终一定保留两个互相独立的运算器。
+
+\pagepart{在板上把数字拨出来，再看LED结果}
+实验1有两类拨码，容易混淆。小拨码SW\_DIP0控制\code{en}，SW\_DIP1控制\code{mux_sel}；大拨码SW3至SW0给a，SW7至SW4给b。下表都按逻辑0、1描述，实物方向应先核对。
+
+假设要设置a=5、b=2，就要使大拨码从SW7到SW0的输入为\code{0010 0101}。其中SW0是a的最低位，SW4是b的最低位。
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}lXX@{}}\toprule
+操作 & 要检查什么 & 预期结果\\\midrule
+固定a=5、b=2，将en设为0 & 禁用分支优先 & 输出1111，四个灯都亮\\
+en改为1，mux\_sel设为0 & 加法分支 & 输出0111，即第0、1、2位灯亮\\
+保持输入，mux\_sel改为1 & 减法分支 & 输出0011，即第0、1位灯亮\\
+加法模式改为a=15、b=1 & 四位结果截断 & 输出0000\\
+减法模式改为a=2、b=5 & 负结果的位模式 & 输出1101，不会出现单独的负号\\\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{看仿真波形时沿着一个变化追踪}
+先找到\code{en}、\code{mux_sel}、a、b和c这几条信号，确认显示进制。a、b若用十六进制显示，A代表十进制10；c若显示F，就对应四位全1。
+
+以a=5、b=2为例：\code{en=0}时c应为F；\code{en}升为1且选择加法后c应为7；随后只改变\code{mux_sel}，c应为3。这个实验没有时钟，判断输出不需要找上升沿。RTL仿真通常把组合变化显示在同一仿真时刻，真实电路要经过传播时间。
+
+\subsection{这一实验常见的误解}
+\textbf{“reg输出一定有存储器吗？”} 这里没有。\code{reg}是过程赋值所需的声明类型，完整的\code{always @(*)}仍是组合电路。
+
+\textbf{“if是不是CPU执行完前一句再执行后一句？”} 综合后的电路持续实现这个选择关系。你改变开关，就改变了选择逻辑的输入。
+
+\textbf{“为什么16显示成0？”} 因为只接出了四位结果。若要完整表达0至30的加法结果，需要至少五位；当前课程接口是四位，因此按低四位观察。
+
+\focus{能自己解释这三个输入输出例子，就已抓住实验1：禁用输出F；5加2输出7；5减2输出3。接下来加上寄存器，电路才能在输入变化后保留旧数据。}

@@ -1,0 +1,93 @@
+\clearpage\section{实验3：数时钟，定时移动灯的位置}
+\subsection{计数器是“寄存器加一”}
+\code{counter.v}保存计时进度，\code{flowing_water_lights.v}保存灯的位置并选择输出图案。顶层例化一个counter，二者共用100MHz时钟。
+
+计数器的规则很明确：复位时归零；计满时归零；允许计数时加一；否则保持。当前实验3把\code{cnt_inc}固定为1，表示不暂停计时。
+\begin{lstlisting}
+assign cnt_max = freq_ctrl ? CNT_MAX_FAST : CNT_MAX_SLOW;
+assign cnt_end = cnt_inc & (cnt >= cnt_max);
+assign cnt_inc = 1'b1;
+
+always @(posedge clk or posedge rst) begin
+    if (rst)          cnt <= {WIDTH{1'b0}};
+    else if (cnt_end) cnt <= {WIDTH{1'b0}};
+    else if (cnt_inc) cnt <= cnt + 1'b1;
+    else              cnt <= cnt;
+end
+\end{lstlisting}
+\code{cnt_max}由速度选择决定，\code{cnt_end}说明当前已经允许执行“计满后的更新”。它由组合比较产生，在正常满计数状态持续一拍；下一个时钟沿计数器清零，灯的位置在同一个时钟沿更新。
+
+例如上限为6时，状态按\code{0,1,2,3,4,5,6,0,...}循环。0和6都各占一个时钟周期，所以相邻两次计满更新相隔7拍。
+
+\subsection{从目标时间算上限}
+若每隔$T$秒更新一次，时钟频率为$f_{\mathrm{clk}}$，所需拍数$N=f_{\mathrm{clk}}T$。从0计到$N-1$，上限为
+\[
+\mathrm{CNT\_MAX}=f_{\mathrm{clk}}T-1
+=\frac{f_{\mathrm{clk}}}{f_{\mathrm{update}}}-1.
+\]
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}llll@{}}\toprule
+用途 & 更新间隔 & 拍数N & 计数上限\\\midrule
+实验3慢档 & 0.1s & 10,000,000 & 9,999,999\\
+实验3快档 & 0.002s & 200,000 & 199,999\\
+题目要求20Hz换灯 & 0.05s & 5,000,000 & 4,999,999\\\bottomrule
+\end{tabularx}
+\end{center}
+
+这里每计满一次就移动一次灯，因此不再除以2。如果另一个任务规定“每计满一次翻转一个方波输出”，一次完整方波周期包含两次翻转，那才需要把两个半周期考虑进去。
+
+\pagepart{灯的位置如何移动，双灯图案如何生成}
+\code{led_pos}保存一个只有一位为1的八位图案。复位后为\code{00000001}，表示LED0。编号递增时，它依次变成：
+\[
+\texttt{01}\ \to\ \texttt{02}\ \to\ \texttt{04}\ \to\ \texttt{08}\ \to\ \texttt{10}\ \to\ \texttt{20}\ \to\ \texttt{40}\ \to\ \texttt{80}\ \to\ \texttt{01}.
+\]
+这里每一项是十六进制。\code{80}是\code{10000000}，再走一步时最高位绕回最低位。这叫循环移位。
+\begin{lstlisting}
+assign next_pos = ctrl_sync[1] ? {led_pos[0], led_pos[7:1]}
+                             : {led_pos[6:0], led_pos[7]};
+assign next_pair = next_pos | {next_pos[6:0], next_pos[7]};
+\end{lstlisting}
+\code{ctrl_sync[1]=0}时，原第0位移动到第1位，原第7位回到第0位；为1时按相反方向移动。花括号拼接位，\code{|}将两个图案按位合并。
+
+例如\code{next_pos=00000100}，循环左移一位得到\code{00001000}，两者按位或就是\code{00001100}，第2和第3个灯一起亮。若\code{next_pos=10000000}，相邻位绕回最低位，双灯就是\code{10000001}。
+
+程序单独保存\code{led_pos}，再根据模式生成\code{led}。这样切回单灯时，仍能找到明确的移动位置。当前代码中双灯始终由位置位和其编号递增的相邻位组成；切换运动方向时，两盏灯的整体移动方向改变。
+
+\subsection{运行中切换是什么意思}
+外部开关先经\code{ctrl_meta}、\code{ctrl_sync}两级采样，再用于内部控制。速度和方向变化无需重新复位；单双灯图案在下一个有效换灯沿更新。同步采样带来几个时钟周期以内的处理过程，相对0.1秒的慢档很短。
+
+计数判断采用\code{>=}很有用：若当前cnt已经数到500万，此时由慢档改快档，新上限只有199999。\code{>=}能识别已经越过新上限并安排清零；仅用\code{==}可能错过新上限，直到计数器回绕后才重新遇到它。
+
+\subsection{复位时为什么双灯档也只有一盏灯亮}
+复位分支直接把\code{led_pos}和\code{led}都写成\code{8'h01}，优先级高于模式。因此按住S1时只有LED0亮；松开后等下一次计满，再按当前模式更新图案。这个现象正好能用来说明复位优先级。
+
+\pagepart{上板操作、仿真参数和波形判断}
+观察LD2\_0至LD2\_7。S1是高电平复位，SW0切速度，SW1切方向，SW7切单双灯。以下0、1均指逻辑值，不凭板子摆放方向猜开关上下。
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}lXX@{}}\toprule
+步骤 & 操作 & 目的与预期现象\\\midrule
+1 & SW0=0、SW1=0、SW7=0；按住S1 & 设慢速、编号递增、单灯；复位时只亮LED0\\
+2 & 松开S1，观察约2秒 & 每0.1s移动一次，0至7再回0\\
+3 & 只将SW1改为1，不复位 & 从当前位置向编号递减方向移动\\
+4 & 只将SW7改为1，不复位 & 下次更新出现相邻双灯，继续反向移动\\
+5 & 将SW1改回0，再将SW7改回0 & 依次观察恢复正向、恢复单灯\\
+6 & 将SW0改为1，再改回0 & 快档每2ms换位；回慢档后又能看清逐灯移动\\
+7 & SW7=1时按住S1，再松开 & 按住仍只亮LED0；释放后恢复双灯运行\\\bottomrule
+\end{tabularx}
+\end{center}
+快档的500Hz是每秒换位500次，八个位置完整轮过一遍是62.5次每秒。肉眼可能看到多个灯近似同时亮，不能据此认定逻辑上同时输出了多位1。慢档适合看位置和图案，快档主要观察速度变化。
+
+\subsection{仿真为什么把上限改成6和11}
+真实慢档一次更新需要1000万拍，若波形窗口只显示几十拍，就几乎看不到变化。testbench通过命名参数覆盖，把快档设为6、慢档设为11，仍保留相同的控制规则，便于看到完整计数周期。
+\begin{lstlisting}
+flowing_water_lights #(
+    .WIDTH(4),
+    .CNT_MAX_FAST(4'd6),
+    .CNT_MAX_SLOW(4'd11)
+) u_flowing_water_lights ( /* named ports */ );
+\end{lstlisting}
+这是参数用法摘录，省略了已在实际测试文件中完整连接的端口。100MHz仿真时，快档更新间隔为70ns，慢档120ns。上板仍使用默认199999和9999999，不能把仿真缩短值直接当成真实时间参数。
+
+波形先看复位，再看速度切换，最后看模式切换。cnt设为无符号十进制，检查0至6、0至11都完整出现；led看十六进制，\code{81}表示LED7、LED0，\code{03}表示LED1、LED0。方向与模式变化后都不再按复位，才能证明运行中切换有效。
+
+\focus{计数器和灯寄存器共同接原始clk。cnt\_end接在if条件里，意思是“这一拍允许换灯”。若把它放进posedge事件里当新时钟，就改变了电路的时钟结构，也违背本课程要求。}

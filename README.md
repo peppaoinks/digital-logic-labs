@@ -38,6 +38,12 @@ digital-logic-labs/
 
 各设计目录保留自己的 `pin.xdc` 和仿真文件。波形、日志及Vivado工程集中生成在忽略跟踪的 `build/` 下。
 
+## 学习讲义
+
+[实验1至4：零基础学习讲义（PDF）](docs/lectures/lab1-4-learning-guide.pdf) · [阅读说明与LaTeX源码](docs/lectures/README.md)
+
+覆盖基础概念、Verilog、四次实验原理、代码讲解与操作自测。讲义保留实验4较早的模块拆分示例，当前四文件实现的对应关系见阅读说明。
+
 ## 快速开始
 
 ### 1. 获取项目
@@ -134,6 +140,7 @@ flowchart LR
 
 | 文档 | 内容 |
 |---|---|
+| [完整学习讲义](docs/lectures/README.md) | PDF、LaTeX源码及历史示例与当前代码的关系 |
 | [实验原理与操作](docs/labs.md) | 功能、接线、控制开关、预期现象 |
 | [模块架构](docs/architecture.md) | 模块边界、接口、参数、时钟与复位 |
 | [验证说明](docs/verification.md) | 整理改动、测试覆盖及验证边界 |

@@ -1,0 +1,74 @@
+\clearpage\section{读代码时先辨认电路结构}
+\subsection{端口、连线与模块实例}
+\begin{lstlisting}
+module dff (
+    input  wire clk,
+    input  wire clr,
+    input  wire en,
+    input  wire d,
+    output reg  q
+);
+\end{lstlisting}
+\code{module dff}声明一个名为dff的模块。括号里的内容是它与外界连接的端口，\code{input}表示输入，\code{output}表示输出。这几个信号没有写位宽，所以每个都是一位。模块末尾用\code{endmodule}结束。
+
+\code{wire}常用于连线或被连续赋值驱动的信号；\code{reg}允许信号在过程块中赋值。单看\code{reg}这个词，无法断定一定生成寄存器。例如实验1的输出也是\code{reg}，但完整的组合赋值最终描述组合电路。是否保存状态，要结合赋值的触发方式和分支是否完整判断。
+
+\begin{lstlisting}
+dff u_dff (
+    .clk(clk),
+    .clr(clr),
+    .en(en),
+    .d(d),
+    .q(q)
+);
+\end{lstlisting}
+这是在更大的设计里放置一个dff模块，\code{u_dff}是这个实例的名字。\code{.clk(clk)}左边是子模块的端口名，右边是外部连接的信号名；两个名字相同只是这里的命名选择。实验4里的多个\code{bcd_counter}实例各自拥有独立状态，连接的使能不同，计数也就不同。
+
+\subsection{连续赋值、组合过程与时序过程}
+\begin{lstlisting}
+assign cnt_inc = enable;
+
+always @(*) begin
+    q = regfile[rsel];
+end
+
+always @(posedge clk or posedge clr) begin
+    if (clr) q <= 1'b0;
+    else if (en) q <= d;
+    else q <= q;
+end
+\end{lstlisting}
+\code{assign}描述持续成立的连线关系。\code{always @(*)}表示相关输入变化时重新求值，适合完整描述组合逻辑。最后一个块在时钟上升沿或清零上升沿响应，并在清零有效期间保持清零优先。
+
+\code{q <= q}表示保持当前值，不会让数值再增加一次。课程保留完整的“复位、计满、自增、保持”分支，因此读到保持分支时，直接把它理解为本拍不改变状态即可。
+
+\pagepart{为什么组合逻辑用等号，时序逻辑用非阻塞赋值}
+组合块里的\code{=}叫阻塞赋值。同一个块按语句顺序计算，后面的语句能使用前面刚算出的值。组合块应该把所有输出在各条路径上交代清楚，否则可能意外推导出锁存器，即一种会保存状态的硬件。
+
+时序块里的\code{<=}叫非阻塞赋值。理解本课程代码时，可以按“这一拍先读取旧值，再一起更新目标寄存器”来判断。这个规则对实验4的两级寄存器尤其重要。
+\begin{lstlisting}
+sig_r0 <= signal;
+sig_r1 <= sig_r0;
+\end{lstlisting}
+假设本拍之前\code{sig_r0=0}，此时输入\code{signal=1}。执行这一拍后，\code{sig_r0}变成1，\code{sig_r1}拿到的仍是旧的\code{sig_r0=0}。下一拍它才变成1。如果两级在同一拍都拿到最新输入，就无法保留相邻拍的差别。
+
+\subsection{常见符号要结合位置理解}
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}lX@{}}\toprule
+写法 & 在本项目中的含义\\\midrule
+\code{==}、\code{>=} & 比较是否相等、是否大于等于，结果是一位条件\\
+\code{&&} & 逻辑与，判断两个条件是否同时为真\\
+\code{&}、\code{|}、\code{~} & 按位与、或、取反\\
+\code{[7:0]} & 八位范围；也可从已有信号中取一段位\\
+\code{{led_pos[6:0], led_pos[7]}} & 拼接：取原第6至0位放高七位，再把原第7位放到最低位\\
+\code{{WIDTH{1'b0}}} & 代码中的外层拼接与内层重复写法，把0重复WIDTH次\\
+\code{parameter} & 配置模块的参数，在展开设计时确定\\
+\code{case} & 根据输入值选择对应分支，常用于译码\\\bottomrule
+\end{tabularx}
+\end{center}
+拼接的实际代码见实验3，注意花括号里左边的项放在结果高位，右边的项放在低位。重复表达式\code{{WIDTH{1'b0}}}总共生成WIDTH个0。
+
+\subsection{哪些代码只在仿真里使用}
+测试文件testbench负责产生时钟、复位、开关变化和按键抖动。\code{always #5 clk = ~clk;}表示每5个时间单位翻转时钟，完整周期为10。配合\code{`timescale 1ns / 1ps}，它就是10ns时钟周期。
+
+\code{#20}是仿真延时，\code{$finish}结束仿真，\code{$dumpvars}记录波形；这些不能当成上板RTL里的硬件计时方案。RTL要等20ms，应使用计数器。课程限制RTL不用\code{initial}初始化，testbench中的\code{initial}则是在安排测试过程。

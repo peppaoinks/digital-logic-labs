@@ -1,0 +1,182 @@
+\clearpage\section{实验4：把按键、计数和显示接成系统}
+\subsection{先把顶层分成两条数据通路}
+实验4顶层文件和模块都叫\code{lab4}。一条通路处理按键并生成数字；另一条通路把选中的数字转换成数码管输出。各模块持续并行工作。
+\begin{center}
+\begin{tikzpicture}[node distance=6mm]
+\node[block,minimum width=25mm] (s) {S3输入};
+\node[block,right=of s,minimum width=30mm] (e) {直接边沿检测};
+\node[block,right=of e,minimum width=28mm] (r) {RR计数};
+\node[block,below=7mm of e,minimum width=30mm] (d) {消抖、边沿检测};
+\node[block,right=of d,minimum width=28mm] (c) {DD计数};
+\node[block,below=7mm of s,minimum width=25mm] (s2) {S2输入};
+\node[block,below=7mm of d,minimum width=30mm] (run) {消抖、边沿检测\\启停状态};
+\node[block,right=of run,minimum width=28mm] (t) {0.1s计时\\TT计数};
+\draw[flow](s)--(e);\draw[flow](e)--(r);
+\draw[flow](s.south)--++(0,-3mm)-|(d.west);\draw[flow](d)--(c);
+\draw[flow](s2.south)|-(run.west);\draw[flow](run)--(t);
+\end{tikzpicture}
+\end{center}
+RR与DD各按00至99循环，TT按00至20循环。显示数据由模式开关选择：逻辑1固定显示\code{25310489}，逻辑0从左到右显示\code{89 RR DD TT}。RR与DD来自同一个S3按键。
+
+\begin{center}
+\begin{tikzpicture}[node distance=5mm]
+\node[block,minimum width=35mm] (a) {固定学号或\\89 RR DD TT};
+\node[block,right=of a,minimum width=31mm] (b) {按扫描位置\\取一个数字};
+\node[block,right=of b,minimum width=26mm] (c) {段码译码};
+\node[block,right=of c,minimum width=23mm] (d) {数码管};
+\draw[flow](a)--(b);\draw[flow](b)--(c);\draw[flow](c)--(d);
+\end{tikzpicture}
+\end{center}
+模式开关只决定展示哪组内容，计数逻辑在后台继续运行。S2控制TT的启停，不控制数码管扫描；暂停自动计数时，所有数码管仍应稳定显示。
+
+\subsection{模块清单与各自保存的状态}
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}lX@{}}\toprule
+文件 & 任务与状态\\\midrule
+\code{lab4.v} & 连接子模块；保存模式同步值和running启停状态\\
+\code{button_debounce.v} & 同步按键；保存稳定计数与确认后的按键电平\\
+\code{edge_detect.v} & 保存相邻拍采样值，生成上升沿通知\\
+\code{bcd_counter.v} & 分别保存十位和个位\\
+\code{cycle_counter.v} & 保存周期计时进度，支持使能暂停\\
+\code{led_ctrl_unit.v} & 保存扫描位置，组合选择数据并译码\\\bottomrule
+\end{tabularx}
+\end{center}
+
+\pagepart{按键输入为什么需要同步和消抖}
+\subsubsection{输入同步处理时钟沿附近的不确定性}
+人按下S3的时刻与100MHz时钟没有固定关系。如果输入恰好在采样沿附近变化，寄存器可能暂时进入无法立即稳定为0或1的状态，称为亚稳态。两级同步给前一级更多稳定时间，降低这种不确定性继续传播的概率；它不能把风险绝对消除。
+\begin{lstlisting}
+button_meta <= button;
+button_sync <= button_meta;
+\end{lstlisting}
+第二级保存的是前一级上一拍的值。后面的消抖逻辑使用\code{button_sync}，而非直接使用外部button。几拍的延迟只有几十纳秒，对人的按键操作几乎感觉不到。
+
+\subsubsection{消抖处理接触过程中的重复变化}
+机械按键在按下和松开时可能短暂反复接通、断开。原始采样可能是\code{0,1,0,1}、\code{1,0,1,1,...}。如果每次0变1都计一次，人按一次就可能加好几次。
+
+本设计保存确认过的电平\code{button_clean}。若新采样和它一致，计数器清零；若不同，就开始统计这种不同连续保持了多少拍。达到20ms才把新电平接受为\code{button_clean}。如果中途又回到原电平，累计进度取消，重新判断。
+\begin{lstlisting}
+if (rst) cnt <= 21'd0;
+else if (button_sync == button_clean) cnt <= 21'd0;
+else if (cnt == DEBOUNCE_MAX) cnt <= 21'd0;
+else cnt <= cnt + 21'd1;
+\end{lstlisting}
+另一个时序块在\code{button_sync != button_clean}且\code{cnt == DEBOUNCE_MAX}时更新确认电平。这两个块在同一时钟沿读取旧值，所以归零计数和接受新状态可以同时完成。
+
+100MHz下20ms需要$2,000,000$拍，默认上限为1,999,999。这个窗口按同步后的采样统计，外部按键到确认输出还包含同步与时钟采样的延迟；不要把外部按下到确认的全过程机械地当成恰好20ms。
+
+按下与松开都需要经过同样的稳定判断，这叫双向消抖。如果还没确认松开就立刻再次按下，电路可能认为一直按住，无法形成第二次有效按下。正常分开的按压应该给按下和松开都留出稳定时间。
+
+\focus{同步和消抖解决不同问题。两级寄存器只延迟几十纳秒，无法过滤毫秒级机械抖动；20ms消抖也不能代替前面的异步输入同步。实验4把两步分别实现，读代码时也要分别判断。}
+
+\pagepart{边沿检测：把按住的电平变成一次通知}
+即使经过消抖，按键按住一秒时，\code{button_clean}仍会高电平持续约一秒。若写成“只要电平为1就加一”，就会在很多个时钟沿重复计数。因此需要识别由0到1的那个变化。
+\lstinputlisting{code/edge_detect.v}
+\code{sig_r0}保存较新的采样，\code{sig_r1}保存上一拍的\code{sig_r0}。\code{sig_r0 & ~sig_r1}要求“新采样是1，旧采样是0”，恰好对应上升沿。
+
+以下假定复位后两级为0，输入在第一拍之前稳定变为1。表格给出每个时钟沿更新完成之后的值。
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}llllX@{}}\toprule
+时刻 & 输入 & sig\_r0 & sig\_r1 & pos\_edge\\\midrule
+第一拍之前 & 1 & 0 & 0 & 0\\
+第一拍之后 & 1 & 1 & 0 & 1，产生一拍宽通知\\
+第二拍之后 & 1 & 1 & 1 & 0，长按不再重复通知\\
+稳定按住期间 & 1 & 1 & 1 & 0\\
+松开采样之后 & 0 & 0 & 1 & 0，下降沿不算按下\\
+再下一拍 & 0 & 0 & 0 & 0，准备识别下次按下\\\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{通知产生与下游计数不是同一个瞬间}
+第一拍更新后\code{pos_edge}才变成1。同样使用上升沿的下游BCD计数器，在第一拍读到的仍是此前的0；到第二拍，它读到沿前为1的通知，才完成加一。同时边沿检测器把通知降回0。理解这个顺序，就能解释为什么计数波形比采样寄存器再晚一个沿。
+
+本课程要求使用这段两级寄存器检测结构。对于RR支路，它直接对原始S3采样、不做毫秒级消抖，因此会记录被采到的多次上升变化。严格的跨时钟域工程设计还会限制第一级亚稳态输出的使用方式；这里的两级相邻采样比较遵循课程模板，不能把它概括为所有异步输入场景的完整防护方案。
+
+\pagepart{十进制计数与启停：数字是怎样产生的}
+\subsection{为什么把个位和十位分开保存}
+二进制整数20写成八位是\code{00010100}。如果每四位直接当一个待显示的十进制数字，就会显示1和4。为了方便逐位显示，这个设计使用BCD：每个十进制数字占四位，十位2、个位0分别存放，总图案为\code{0010 0000}。
+
+\code{ones}和\code{tens}各有四位，但按十进制规则限制在0至9。\code{bcd_counter}的优先级是：复位清零；到指定上限且收到计数使能时清零；否则收到使能时加一；没有使能时保持。
+\begin{lstlisting}
+assign cnt_end = cnt_inc & (tens == MAX_TENS)
+                         & (ones == MAX_ONES);
+\end{lstlisting}
+未到上限时，若个位为9，就把个位清零、十位加一，例如09到10；若个位小于9，就只把个位加一。RR、DD使用默认上限99，TT实例把\code{MAX_TENS}设为2、\code{MAX_ONES}设为0，因此20之后回到00。
+
+到20那一拍不会立刻又清零。计数状态20会一直保持到下一次计数使能，因此在自动运行中它也保持0.1秒。00至20共有21个显示值，一轮需要2.1秒。
+
+\subsection{S2切换的到底是什么}
+S2先消抖，再生成一次\code{s2_press}通知；顶层收到通知时执行：
+\begin{lstlisting}
+if (rst) running <= 1'b1;
+else if (s2_press) running <= ~running;
+else running <= running;
+\end{lstlisting}
+\code{~running}把0、1互换，所以一次按下切换一次运行状态。复位直接设为1，故松开复位后自动开始，无需另外按启动。
+
+\code{running}连接到0.1秒周期计数器的enable。停下时，周期计数器保留当前进度，TT保持；继续后从剩余进度接着走。例如停在约40ms处，恢复后约再走60ms就会更新一次，之后每100ms更新一次。按键识别本身有延迟，因此这里用“约”来解释时间关系。
+
+若一次暂停操作恰好与计满更新发生在同一个沿，所有寄存器仍按沿前的状态判断，这一沿可能完成最后一次更新。观察实物时，应在暂停按键被确认后再检查是否持续停止。
+
+\subsection{固定学号的写法为何用了十六进制标记}
+\code{32'h25310489}把八个待显示数字依次装进八个四位字段。扫描器每次取四位，直接译成一位数码管。它没有先把十进制整数25310489转换成普通二进制整数再拆位。顶层拼接\code{89 RR DD TT}时使用同样的逐位格式。
+
+\pagepart{数码管：选哪一位，再决定亮哪些段}
+一位数码管用A至G七个发光段组成数字，另有小数点DP。显示1点亮B和C，显示8点亮A至G，显示0点亮除G以外的六段。
+\begin{center}
+\begin{tikzpicture}[x=1cm,y=1cm]
+\draw[line width=4pt,ink] (0.2,2)--(1.2,2) (0.2,1)--(1.2,1) (0.2,0)--(1.2,0) (0,1.2)--(0,1.8) (1.4,1.2)--(1.4,1.8) (0,0.2)--(0,0.8) (1.4,0.2)--(1.4,0.8);
+\node[above] at (.7,2.1){A};\node[right] at (1.5,1.5){B};\node[right] at (1.5,.5){C};\node[below] at (.7,-.1){D};\node[left] at (-.1,.5){E};\node[left] at (-.1,1.5){F};\node at (.7,1.3){G};
+\fill[ink](2,-.02) circle (3pt);\node[right] at (2.1,0){DP};
+\node[align=left,anchor=west,font=\small] at (3,1){段选顺序：A B C D E F G DP\\高电平点亮，DP默认关闭。};
+\end{tikzpicture}
+\end{center}
+代码把段选写成八位\code{segment}，顺序是\code{{A,B,C,D,E,F,G,DP}}。显示1的段码\code{8'h60}即\code{01100000}，B和C两位为1；显示8为\code{8'hFE}即\code{11111110}，七段亮、小数点灭。
+
+\subsection{八位扫描是怎样循环的}
+\code{scan_index}有三位，能表示0至7。每计满1ms增加一次，到7再加一时三位结果回到0。位置0选择最右边一位，位置7选择最左边一位。
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}llll@{}}\toprule
+扫描编号 & 位选led\_en & 从display取出的字段 & 固定学号下的数字\\\midrule
+0 & 01 & [3:0] & 9，最右位\\
+1 & 02 & [7:4] & 8\\
+2 & 04 & [11:8] & 4\\
+3 & 08 & [15:12] & 0\\
+4 & 10 & [19:16] & 1\\
+5 & 20 & [23:20] & 3\\
+6 & 40 & [27:24] & 5\\
+7 & 80 & [31:28] & 2，最左位\\\bottomrule
+\end{tabularx}
+\end{center}
+
+实际扫描从右往左走，人眼看到的是左至右的25310489。\code{led_en}决定哪一位亮，段码决定这一位的字形；只给段码、不选位，或选位与数字字段错配，都不能正确显示。
+
+\pagepart{扫描频率、左右段选和真实操作}
+每位1ms，一轮八位就是8ms。因此切位频率是1000Hz，每位每秒刷新125次，固定内容下每位占一轮的八分之一时间。人眼的时间积分使快速轮询形成稳定显示。125Hz是本设计的整轮刷新率，不能把1kHz写成每一位的刷新率。
+
+EGO1的左右四位有独立段选。当前代码中\code{led_cx}控制右四位，\code{led_cx1}控制左四位：
+\begin{lstlisting}
+assign led_cx  = scan_index[2] ? 8'h00 : segment;
+assign led_cx1 = scan_index[2] ? segment : 8'h00;
+\end{lstlisting}
+位置0至3时\code{scan_index[2]=0}，把段码送到右组，左组置0；位置4至7时反过来。位选与段选都按高电平有效设计。
+
+\subsection{按一次、停一次、切一次显示}
+S1复位、S2启停、S3计数。SW0逻辑1为固定模式，逻辑0为指定模式；课程要求向上固定、向下指定，首次上板仍需核对物理方向。
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}lXX@{}}\toprule
+步骤 & 具体操作 & 目的与预期现象\\\midrule
+1 & 按S1再松开，SW0设为1 & 八位显示25310489，检查顺序与各段\\
+2 & SW0改为0，再按S1松开 & 显示89 00 00 TT，TT从00开始每0.1s增加\\
+3 & 按S2、松开，等约1秒 & TT停止；扫描和其他显示继续工作\\
+4 & 再按S2并松开 & TT从保留的计时进度继续，20后回00\\
+5 & 按S3一次并充分松开，再按一次 & DD依次到01、02；RR可能相同，也可能更多\\
+6 & 长按S3约1秒，再松开 & DD只增加1；稳定长按不应逐拍累加\\
+7 & 不复位，来回切SW0 & 固定与指定显示随时切换，后台计数保留\\
+8 & 最后再按S1并松开 & RR、DD清零，TT重新从00自动运行\\\bottomrule
+\end{tabularx}
+\end{center}
+
+RR是否多计取决于实际抖动有没有被采到，一次按键恰好只计一次完全可能。不要为了证明消抖，声称实物每次必然多计。短到不足稳定窗口的按压可能被DD忽略，这是过滤规则的一部分。
+
+仿真将\code{SCAN_MAX=9}、\code{DEBOUNCE_MAX=9}、\code{TICK_MAX=99}。在10ns时钟下，它们分别对应每位100ns、稳定判定10拍、自动计时100拍。波形中的纳秒级消抖是缩短参数后的演示，真实上板依旧使用20ms窗口。

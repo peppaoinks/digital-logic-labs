@@ -1,0 +1,78 @@
+\clearpage\section{实验2：保存数据，并规定什么时候改写}
+\subsection{D触发器保存一位数据}
+D触发器的d是数据输入，q是保存后的输出。当前代码的优先级是：清零优先；没有清零时，若使能有效，在时钟上升沿写入；否则保持。
+\lstinputlisting{code/dff.v}
+
+端口声明说明五个信号各占一位。\code{posedge clk}表示时钟上升沿；\code{posedge clr}允许清零在两个时钟沿之间也生效。块内部先检查\code{clr}，所以它和时钟同时有效时仍然优先清零。
+
+\code{q <= d}把本拍采到的d保存到q。假设d从0变成1，但变化时刻没有时钟上升沿，q暂时不变；到下一上升沿，若en=1，q才变成1。若随后en=0，d再怎么变化，q都保留1，直到允许写入或清零。
+
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}llllX@{}}\toprule
+事件 & clr & en & d & q的行为\\\midrule
+clr从0变1 & 1 & 任意 & 任意 & 清零，不等时钟\\
+时钟上升沿 & 0 & 1 & 1 & 更新为1\\
+两个上升沿之间d改为0 & 0 & 1 & 0 & 仍为1\\
+下一个时钟上升沿 & 0 & 1 & 0 & 更新为0\\
+再到一个上升沿 & 0 & 0 & 1 & 保持0\\\bottomrule
+\end{tabularx}
+\end{center}
+
+判断时序行为时，先看复位，再看是不是有效时钟沿，最后看使能和输入。
+
+\pagepart{寄存器堆：八个地址，每个地址保存八位}
+\begin{lstlisting}
+reg [7:0] regfile [7:0];
+\end{lstlisting}
+第一个\code{[7:0]}说明每份数据有八位，第二个\code{[7:0]}说明有八份数据，编号0至7。因此总容量是$8\times8=64$位，等于8字节。它在本实验中可以理解为八组八位寄存器；综合器最终采用何种资源，还会受读写与复位方式影响。
+
+\code{wsel}和\code{rsel}都是三位，因为三位恰好能表达0至7这八个地址。地址是“存在哪里”，数据是“存什么”，两者不需要有相同位宽。
+
+\begin{center}
+\begin{tikzpicture}[node distance=10mm]
+\node[block,minimum width=35mm] (w) {d：八位数据\\wsel：写地址};
+\node[block,right=of w,minimum width=39mm,minimum height=25mm] (r) {regfile[0]\\regfile[1]\\\ldots\\regfile[7]};
+\node[block,right=of r,minimum width=32mm] (o) {按rsel选一组\\输出到q};
+\draw[flow](w)--(r);\draw[flow](r)--(o);
+\node[below=5mm of r,font=\small] {clk、clr、en控制写入};
+\end{tikzpicture}
+\end{center}
+
+写入部分位于时序块。清零时把八组数据全部设为0；允许写入时，执行：
+\begin{lstlisting}
+regfile[wsel] <= d;
+\end{lstlisting}
+例如\code{wsel=3'd2}、\code{d=8'hA5}，下一个时钟上升沿把A5存到2号地址。其他地址没有被改写，会保持原来的数据。课程模板中的保持分支显式写出\code{regfile[wsel] <= regfile[wsel]}。
+
+读出部分则是组合块：
+\begin{lstlisting}
+always @(*) begin
+    q = regfile[rsel];
+end
+\end{lstlisting}
+只要rsel改变，q就根据新的读地址重新选择输出，不需要等时钟。因此这个设计叫\textbf{同步写、组合读}，也常称同步写、异步读。这里“异步读”特指读取不用等时钟，与后文输入同步所解决的问题含义不同。
+
+若读写同一个地址，写入的时钟沿到来前读到旧值；该沿完成写入后，组合读输出随新的寄存器内容变化。讨论这个顺序时要分清沿前与沿后，真实硬件还有输出传播延迟。
+
+\pagepart{跟着一次写入和两次读取走完全过程}
+在仿真中依次改变清零、写使能、地址和输入数据，可以观察一次完整的存取过程。
+
+\begin{enumerate}
+\item 先将clr置1，八个地址清零；读取任意地址，预期都是00。
+\item 撤销clr，置en=1，令wsel=2、d=A5。有效时钟沿到来之前，2号地址仍为00；沿后写入A5。
+\item 令wsel=5、d=3C，等待写入上升沿。此时5号地址保存3C，2号地址继续保存A5。
+\item 将en置0，再改变d为FF。这只是改变了输入，两个地址已保存的数据不会被覆盖。
+\item 令rsel=2，q输出A5；令rsel=5，q输出3C。切读地址无需等待写入时钟沿。
+\item 在两个时钟上升沿之间再次把clr拉高，读出的内容就变成00，用来证明清零确实是异步的。
+\end{enumerate}
+
+\subsection{怎样读实验2的波形}
+先从clk找到每个上升沿，再在沿前读clr、en、wsel和d。由这些值判断这一拍会不会写、写到哪里、写入什么。接着看沿后的保存内容与q。观察组合读时，换一条线索：先找rsel何时改变，再看q有没有选中对应地址。
+
+仿真里\code{X}通常表示未知值，例如未初始化的寄存器或冲突；\code{Z}表示高阻状态。它们不是普通的0或1。实验开始的复位就是把本来未必确定的状态带到已知起点。输出未知时先检查复位和连接，再判断功能。
+
+\subsection{把“保存”与“显示”分开理解}
+读取2号地址不会把A5搬走，也不会清空它。q只是所选数据的输出。切换rsel到5，相当于换一个观察对象，2号地址仍保存A5。这个区分在实验4里同样适用：切换显示模式也不会自动清空后台计数。
+
+D触发器和寄存器堆之间的区别主要是规模和选择机制。一个D触发器保存一位，八位寄存器保存八位，寄存器堆还加入地址选择。后面的计数器同样依靠寄存器保存数据，只是写进去的数据通常由旧值加一得到。
+\focus{自检：en=0、clr=0时，只改变d，q会改变吗？D触发器不会。寄存器堆若仅改变d，也不会改变所存数据；但即使en=0，只要改变rsel，q仍可能变，因为读地址选中了另一份已保存的数据。}

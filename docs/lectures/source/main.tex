@@ -1,0 +1,54 @@
+% !TeX program = xelatex
+\documentclass[UTF8,fontset=fandol,zihao=-4,a4paper]{ctexart}
+\usepackage[margin=22mm,headheight=16pt]{geometry}
+\usepackage{amsmath,amssymb,graphicx,booktabs,tabularx,array,xcolor,fancyhdr,lastpage,enumitem,hyperref,listings,tikz,longtable}
+\usetikzlibrary{arrows.meta,positioning,calc}
+\IfFileExists{../../../lab3/report/latex/fonts/Songti.ttc}{
+  \setCJKmainfont[Path=../../../lab3/report/latex/fonts/,FontIndex=6]{Songti.ttc}
+}{
+  \IfFontExistsTF{Songti SC}{\setCJKmainfont{Songti SC}}{}
+}
+\definecolor{ink}{HTML}{183A50}
+\definecolor{muted}{HTML}{586875}
+\definecolor{pale}{HTML}{F4F7F9}
+\definecolor{accent}{HTML}{237C85}
+\hypersetup{colorlinks=true,urlcolor=ink,linkcolor=ink,pdftitle={数字逻辑设计：实验1至4学习讲义},pdfauthor={周方璟}}
+\setlength{\parindent}{2em}
+\setlength{\parskip}{4pt}
+\linespread{1.12}
+\setlist{nosep,leftmargin=2em,topsep=4pt}
+\renewcommand{\arraystretch}{1.28}
+\pagestyle{fancy}\fancyhf{}
+\fancyhead[L]{\small\color{muted}数字逻辑设计 / 实验1至4学习讲义}
+\fancyhead[R]{\small\color{muted}周方璟}
+\fancyfoot[R]{\small\thepage\ / \pageref{LastPage}}
+\ctexset{section={format=\Large\bfseries\color{ink},beforeskip=12pt,afterskip=8pt},subsection={format=\normalsize\bfseries\color{ink},beforeskip=9pt,afterskip=5pt},subsubsection={format=\normalsize\bfseries,beforeskip=6pt,afterskip=3pt}}
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\focus}[1]{\par\smallskip\noindent\colorbox{pale}{\parbox{\dimexpr\linewidth-2\fboxsep}{#1}}\par\smallskip}
+\newcommand{\pagepart}[1]{\clearpage\subsection{#1}}
+\lstdefinestyle{rtl}{language=Verilog,basicstyle=\ttfamily\footnotesize,keywordstyle=\color{ink}\bfseries,commentstyle=\color{muted},stringstyle=\color{accent},numbers=left,numberstyle=\tiny\color{muted},numbersep=7pt,backgroundcolor=\color{pale},frame=single,rulecolor=\color{pale},breaklines=true,columns=fullflexible,keepspaces=true,showstringspaces=false,tabsize=4,xleftmargin=1.8em,framexleftmargin=0.5em,aboveskip=8pt,belowskip=7pt}
+\lstset{style=rtl}
+\tikzset{block/.style={draw=ink,rounded corners=2pt,fill=pale,align=center,minimum height=11mm,font=\small},flow/.style={-{Stealth[length=2mm]},thick,ink}}
+\emergencystretch=3em
+\begin{document}
+\begin{titlepage}
+\thispagestyle{fancy}
+\vspace*{20mm}
+{\Huge\bfseries\color{ink}数字逻辑设计}\par\vspace{5mm}
+{\LARGE 实验1至4学习讲义}\par\vspace{10mm}
+{\large 从电平、时钟到寄存器、流水灯与数码管}\par\vspace{13mm}
+周方璟\par
+\vspace{12mm}
+\end{titlepage}
+\setcounter{page}{2}
+{\small\tableofcontents}
+\clearpage
+\input{chapters/01_foundations}
+\input{chapters/02_verilog}
+\input{chapters/03_lab1}
+\input{chapters/04_lab2}
+\input{chapters/05_lab3}
+\input{chapters/06_lab4}
+\input{chapters/07_practice}
+\input{chapters/08_appendix}
+\end{document}
