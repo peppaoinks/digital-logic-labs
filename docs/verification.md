@@ -30,4 +30,4 @@
 
 实验2寄存器文件组合读的 `@* is sensitive to all 8 words in array` 是Icarus对组合敏感列表的提示。
 
-截至整理时，实验4旧版已通过课程检查；精简、实例改名及本次属性整理后的版本不能据此声称已重新上板。本仓库未执行Vivado综合、实现、时序检查；统一Tcl入口也尚未在Vivado中运行。GitHub Actions是否通过以仓库实际运行结果为准。
+截至整理时，实验4旧版已通过课程检查；精简、实例改名及本次属性整理后的版本不能据此声称已重新上板。本仓库未执行Vivado综合、实现、时序检查；统一Tcl入口也尚未在Vivado中运行。首次GitHub Actions完整验证已通过13组仿真，运行记录见[首次验证](https://github.com/peppaoinks/digital-logic-labs/actions/runs/41193408706)。后续提交状态以README中的徽章及Actions记录为准。
