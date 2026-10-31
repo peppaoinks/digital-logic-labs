@@ -1,0 +1,21 @@
+# 仿真及 Vivado 生成文件
+build/
+vivado/
+.Xil/
+*.vcd
+*.vvp
+*.wdb
+*.jou
+*.log
+*.str
+*.bit
+*.bin
+*.dcp
+*.xpr
+*.runs/
+*.cache/
+*.sim/
+*.hw/
+*.ip_user_files/
+.DS_Store
+__pycache__/
