@@ -42,7 +42,7 @@ digital-logic-labs/
 
 [实验1至4：零基础学习讲义（PDF）](docs/lectures/lab1-4-learning-guide.pdf) · [阅读说明与LaTeX源码](docs/lectures/README.md)
 
-覆盖基础概念、Verilog、四次实验原理、代码讲解与操作自测。讲义保留实验4较早的模块拆分示例，当前四文件实现的对应关系见阅读说明。
+覆盖基础概念、Verilog、四次实验原理、代码讲解与操作自测，附配套代码和源码编译说明。
 
 ## 快速开始
 
@@ -134,13 +134,13 @@ flowchart LR
 | Vivado工程入口 | 已提供；尚未在Vivado实机执行 |
 | 当前整理版综合、实现、时序与上板 | 待验证 |
 
-实验4较早版本曾通过课程检查，本仓库整理版尚未重新上板。行为仿真结果不代表物理时序收敛或真实按键的全部电气行为。
+当前版本的上板验证待完成。行为仿真结果不代表物理时序收敛或真实按键的全部电气行为。
 
 ## 文档导航
 
 | 文档 | 内容 |
 |---|---|
-| [完整学习讲义](docs/lectures/README.md) | PDF、LaTeX源码及历史示例与当前代码的关系 |
+| [完整学习讲义](docs/lectures/README.md) | PDF、LaTeX源码、配套代码与编译说明 |
 | [实验原理与操作](docs/labs.md) | 功能、接线、控制开关、预期现象 |
 | [模块架构](docs/architecture.md) | 模块边界、接口、参数、时钟与复位 |
 | [验证说明](docs/verification.md) | 整理改动、测试覆盖及验证边界 |
